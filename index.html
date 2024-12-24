@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Comparison Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 800px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .textarea-container {
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .textarea {
+            flex: 1;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #007BFF;
+            color: white;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .misspelled-word {
+            color: red;
+            font-weight: bold;
+        }
+
+        .extra-word {
+            color: purple;
+            font-weight: bold;
+        }
+
+        .word-count {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .word-count.red {
+            color: red;
+        }
+
+        .suggestions-section {
+            margin-top: 20px;
+        }
+
+        .suggestion-item {
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+
+        .voice-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .clear-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .active-start {
+            background-color: green !important;
+        }
+
+        .active-stop {
+            background-color: red !important;
+        }
+
+        #compareBtn {
+            background-color: rgb(255, 255, 255);
+            width: 1%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        #downloadPDFBtn {
+            background-color: black;
+        }
+
+        .language-toggle {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #28a745;
+            color: white;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .language-toggle:hover {
+            background-color: #218838;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Text Comparison Tool</h1>
+        <div class="textarea-container">
+            <div class="textarea">
+                <label for="content1">Original Content</label>
+                <textarea id="content1" placeholder="Enter the original content here..."></textarea>
+                <div id="wordCount1" class="word-count"></div>
+                <input type="file" id="uploadFile" accept=".txt,.doc,.docx" />
+            </div>
+            <div class="textarea">
+                <label for="content2">Compared Content</label>
+                <textarea id="content2" placeholder="Enter the compared content here..."></textarea>
+                <div id="wordCount2" class="word-count"></div>
+                <div class="voice-buttons">
+                    <button id="startVoiceInput">Start Voice Input 🎙️</button>
+                    <button id="stopVoiceInput">Stop Voice Input 🎙️</button>
+                </div>
+            </div>
+        </div>
+        <button id="languageToggle" class="language-toggle">Switch to Hindi Voice Input</button>
+        <div class="clear-buttons">
+            <button id="clearContent1">Clear Original Content</button>
+            <button id="clearContent2">Clear Compared Content</button>
+        </div>
+        
+        <button id="downloadPDFBtn">Download Report PDF</button>
+        <button id="compareBtn">Compare</button>
+
+        <div class="results" id="results"></div>
+        <div class="suggestions-section">
+            <h2>Suggestions</h2>
+            <div id="suggestions"></div>
+        </div>
+    </div>
+
+    <!-- Include required libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        // File Upload Handling for .txt and .docx files
+        document.getElementById('uploadFile').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+
+            if (file.type === "text/plain") {
+                reader.onload = function (e) {
+                    document.getElementById('content1').value = e.target.result;
+                    updateWordCount();
+                    performComparison();
+                };
+                reader.readAsText(file);
+            } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+                reader.onload = function (e) {
+                    const arrayBuffer = e.target.result;
+                    mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                        .then(function (result) {
+                            document.getElementById('content1').value = result.value;
+                            updateWordCount();
+                            performComparison();
+                        })
+                        .catch(function (err) {
+                            console.error("Error reading Word file:", err);
+                            alert("Failed to read Word file. Please try again.");
+                        });
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert("Unsupported file type. Please upload a .txt or .docx file.");
+            }
+        });
+
+        // Update Word Counts
+        function updateWordCount() {
+            const countWords = (text) => text.trim().split(/\s+/).filter(word => word).length;
+
+            const content1 = document.getElementById('content1').value;
+            const content2 = document.getElementById('content2').value;
+
+            document.getElementById('wordCount1').textContent = `Word Count: ${countWords(content1)}`;
+            document.getElementById('wordCount2').textContent = `Word Count: ${countWords(content2)}`;
+        }
+
+        document.getElementById('content1').addEventListener('input', updateWordCount);
+        document.getElementById('content2').addEventListener('input', () => {
+            updateWordCount();
+            performComparison();
+        });
+
+        // Real-Time and Manual Comparison Logic
+        function performComparison() {
+            const content1 = document.getElementById('content1').value.trim();
+            const content2 = document.getElementById('content2').value.trim();
+
+            if (!content1 || !content2) {
+                document.getElementById('results').innerHTML = '';
+                document.getElementById('suggestions').innerHTML = '';
+                return;
+            }
+
+            const normalizeText = (text) => {
+                return text
+                    .toLowerCase()
+                    .replace(/[.,/#!$%^&*;:{}=\-_`~()।]/g, ' ')
+                    .trim();
+            };
+
+            const normalizedContent1 = normalizeText(content1);
+            const normalizedContent2 = normalizeText(content2);
+
+            const words1 = normalizedContent1.split(/\s+/);
+            const words2 = normalizedContent2.split(/\s+/);
+
+            let i = 0, j = 0;
+            let results = '';
+            const suggestions = [];
+            let matchingWords = 0;
+
+            while (i < words1.length || j < words2.length) {
+                const word1 = words1[i] || '';
+                const word2 = words2[j] || '';
+
+                if (word1 === word2) {
+                    results += `${word2} `;
+                    matchingWords++;
+                    i++;
+                    j++;
+                } else if (word2 && words1[i] === words2[j + 1]) {
+                    results += `<span class="extra-word">${word2}</span> `;
+                    suggestions.push(`Remove extra word: "${word2}"`);
+                    j++;
+                } else if (word1 && word2) {
+                    results += `<span class="misspelled-word">${word2}</span> `;
+                    suggestions.push(`Replace "${word2}" with "${word1}"`);
+                    i++;
+                    j++;
+                } else if (!word1) {
+                    results += `<span class="extra-word">${word2}</span> `;
+                    suggestions.push(`Extra word: "${word2}"`);
+                    j++;
+                } else {
+                    results += `<span class="misspelled-word">(missing)</span> `;
+                    suggestions.push(`Missing word: "${word1}"`);
+                    i++;
+                }
+            }
+
+            const accuracy = ((matchingWords / Math.max(words1.length, words2.length)) * 100).toFixed(2);
+
+            document.getElementById('results').innerHTML = results + `<br><br><strong>Accuracy: ${accuracy}%</strong>`;
+            document.getElementById('suggestions').innerHTML = suggestions.map(s => `<div class="suggestion-item">${s}</div>`).join('');
+        }
+
+        // Compare Button
+        document.getElementById('compareBtn').addEventListener('click', performComparison);
+
+        // Voice Input for Compared Content
+        const startVoiceInputButton = document.getElementById('startVoiceInput');
+        const stopVoiceInputButton = document.getElementById('stopVoiceInput');
+        const content2Textarea = document.getElementById('content2');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';  // Default to English
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onresult = function (event) {
+                let interimTranscript = "";
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript.trim();
+                    if (event.results[i].isFinal) {
+                        content2Textarea.value += (content2Textarea.value ? " " : "") + transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                performComparison();
+            };
+
+            recognition.onerror = function (event) {
+                console.error("Speech recognition error:", event.error);
+                alert("Speech recognition error occurred. Please try again.");
+            };
+
+            startVoiceInputButton.addEventListener('click', function () {
+                recognition.start();
+                startVoiceInputButton.classList.add('active-start');
+                stopVoiceInputButton.classList.remove('active-stop');
+            });
+
+            stopVoiceInputButton.addEventListener('click', function () {
+                recognition.stop();
+                stopVoiceInputButton.classList.add('active-stop');
+                startVoiceInputButton.classList.remove('active-start');
+            });
+
+            // Language Toggle for Voice Input (English/Hindi)
+            document.getElementById('languageToggle').addEventListener('click', function () {
+                if (recognition.lang === 'en-US') {
+                    recognition.lang = 'hi-IN'; // Switch to Hindi
+                    document.getElementById('languageToggle').textContent = 'Switch to English Voice Input';
+                } else {
+                    recognition.lang = 'en-US'; // Switch to English
+                    document.getElementById('languageToggle').textContent = 'Switch to Hindi Voice Input';
+                }
+            });
+
+        } else {
+            alert("Speech recognition is not supported in this browser.");
+            startVoiceInputButton.disabled = true;
+            stopVoiceInputButton.disabled = true;
+        }
+
+        // Clear Buttons
+        document.getElementById('clearContent1').addEventListener('click', function () {
+            document.getElementById('content1').value = '';
+            updateWordCount();
+            performComparison();
+        });
+
+        document.getElementById('clearContent2').addEventListener('click', function () {
+            document.getElementById('content2').value = '';
+            updateWordCount();
+            performComparison();
+        });
+
+        // Download Screenshot as PDF
+        document.getElementById('downloadPDFBtn').addEventListener('click', function () {
+            const results = document.getElementById('results');
+
+            if (results.innerHTML.trim() === "") {
+                alert("No comparison results available to capture.");
+                return;
+            }
+
+            html2canvas(results, { scale: 2 }).then(function (canvas) {
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Get the aspect ratio of the image
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
+
+                // Calculate the image dimensions to fit within the PDF page
+                const pdfWidth = doc.internal.pageSize.width - 20; // 10mm margin on each side
+                const pdfHeight = (imgHeight * pdfWidth) / imgWidth; // Calculate based on aspect ratio
+
+                // Add the image to the PDF, adjusting its size and position to maintain the aspect ratio
+                doc.addImage(imgData, 'PNG', 10, 10, pdfWidth, pdfHeight);
+
+                // Save the PDF
+                doc.save("comparison_results.pdf");
+            });
+        });
+    </script>
+</body>
+</html>
